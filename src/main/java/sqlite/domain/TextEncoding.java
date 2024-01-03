@@ -1,4 +1,4 @@
-package sqlite;
+package sqlite.domain;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -10,13 +10,13 @@ import lombok.experimental.Accessors;
 public enum TextEncoding {
 
 	UTF_8(1),
-	UTF_16_LE(2),
-	UTF_16_BE(3);
+	UTF_16LE(2),
+	UTF_16BE(3);
 
 	private final int value;
 
 	public String format() {
-		return "%d (%s)".formatted(value, name().replace("_", "-"));
+		return "%d (%s)".formatted(value, name().replace("_", "-").toLowerCase());
 	}
 
 	public static TextEncoding valueOf(int value) {

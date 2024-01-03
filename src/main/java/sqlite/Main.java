@@ -1,10 +1,9 @@
 package sqlite;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.file.Files;
 import java.nio.file.Path;
+
+import sqlite.domain.Database;
 
 public class Main {
 
@@ -14,9 +13,8 @@ public class Main {
 			return;
 		}
 
-		final var sqlitePath = args[0];
-		final var buffer = ByteBuffer.wrap(Files.readAllBytes(Path.of(sqlitePath))).order(ByteOrder.BIG_ENDIAN);
-		final var database = new Database(buffer);
+		final var path = Path.of(args[0]);
+		final var database = SQLiteParser.parse(path);
 
 		final var command = args[1];
 		switch (command) {
@@ -26,22 +24,26 @@ public class Main {
 	}
 
 	public static void dbinfo(Database database) {
-		print("database page size", database.getPageSize());
-		print("write format", database.getWriteVersion());
-		print("read format", database.getReadVersion());
-		print("reserved bytes", database.getReservedBytes());
-		print("file change counter", database.getFileChangeCounter());
-		print("database page count", database.getPageCount());
-		print("freelist page count", database.getFreelistPageCount());
-		print("schema cookie", database.getSchemaCookie());
-		print("schema format", database.getSchemaFormat());
-		print("default cache size", database.getDefaultPageCacheSize());
-		print("autovacuum top root", database.getAutovacuumTopRoot());
-		print("incremental vacuum", database.getIncrementalVacuum());
-		print("text encoding", database.getTextEncoding().format());
-		print("user version", database.getUserVersion());
-		print("application id", database.getApplicationId());
-		print("software version", database.getSqliteVersion());
+		final var header = database.header();
+		print("database page size", header.pageSize());
+		print("write format", header.writeVersion().value());
+		print("read format", header.readVersion().value());
+		print("reserved bytes", header.reservedBytes());
+		print("file change counter", header.fileChangeCounter());
+		print("database page count", header.pageCount());
+		print("freelist page count", header.freelistPageCount());
+		print("schema cookie", header.schemaCookie());
+		print("schema format", header.schemaFormat());
+		print("default cache size", header.defaultPageCacheSize());
+		print("autovacuum top root", header.autovacuumTopRoot());
+		print("incremental vacuum", header.incrementalVacuum());
+		print("text encoding", header.textEncoding().format());
+		print("user version", header.userVersion());
+		print("application id", header.applicationId());
+		print("software version", header.sqliteVersion());
+		
+		final var schema = database.schema();
+		print("number of tables", schema.size());
 	}
 
 	private static void print(String key, Object value) {
