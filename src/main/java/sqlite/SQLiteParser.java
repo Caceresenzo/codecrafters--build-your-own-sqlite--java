@@ -6,7 +6,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
+import sqlite.domain.Batch;
 import sqlite.domain.Cell;
 import sqlite.domain.Database;
 import sqlite.domain.DatabaseHeader;
@@ -14,8 +16,17 @@ import sqlite.domain.FileFormatVersion;
 import sqlite.domain.Page;
 import sqlite.domain.PageHeader;
 import sqlite.domain.PageType;
-import sqlite.domain.Schema;
+import sqlite.domain.Row;
 import sqlite.domain.TextEncoding;
+import sqlite.domain.schema.Schema;
+import sqlite.domain.schema.Table;
+import sqlite.domain.type.BlobType;
+import sqlite.domain.type.BooleanType;
+import sqlite.domain.type.DoubleType;
+import sqlite.domain.type.IntegerType;
+import sqlite.domain.type.NullType;
+import sqlite.domain.type.StringType;
+import sqlite.domain.type.Type;
 import sqlite.util.BufferUtils;
 
 public class SQLiteParser {
@@ -107,20 +118,51 @@ public class SQLiteParser {
 	}
 
 	public static Schema parseSchema(ByteBuffer buffer, DatabaseHeader databaseHeader) {
-		final var page = parsePage(buffer, databaseHeader, 1);
+		final var page = parsePage(buffer, databaseHeader.pageSize(), 1);
+
+		final var tables = new ArrayList<Table>();
+
+		final var textEncoding = databaseHeader.textEncoding();
+		final var batches = page.cells()
+			.stream()
+			.filter(Cell.WithPayload.class::isInstance)
+			.map((cell) -> parseBatch((Cell.WithPayload) cell, textEncoding))
+			.toList();
+
+		for (final var batch : batches) {
+			for (final var row : batch.rows()) {
+				final var type = row.get(0);
+
+				if ("table".equals(type)) {
+					final var name = row.getString(1);
+					final var rootPage = row.getLong(3);
+
+					tables.add(new Table(
+						name,
+						rootPage
+					));
+				}
+			}
+		}
 
 		return new Schema(
-			page.cells().size()
+			tables
 		);
 	}
 
-	public static Page parsePage(ByteBuffer buffer, DatabaseHeader databaseHeader, int number) {
+	public static Page parsePage(ByteBuffer buffer, int pageSize, int number) {
 		if (number < 1) {
 			throw new IllegalStateException("number < 1: " + number);
 		}
 
-		buffer = slicePageBuffer(buffer, databaseHeader.pageSize(), number);
+		final var pageBuffer = slicePageBuffer(buffer, pageSize, number);
 
+		return parsePage(
+			pageBuffer
+		);
+	}
+
+	public static Page parsePage(ByteBuffer buffer) {
 		final var header = parsePageHeader(buffer);
 		final var numberOfCells = header.numberOfCells();
 
@@ -131,7 +173,8 @@ public class SQLiteParser {
 
 		final var cells = new ArrayList<Cell>();
 		for (final var offset : cellOffsets) {
-			buffer.position(offset);
+			/* TODO only for first page? */
+			buffer.position(offset - HEADER_SIZE);
 
 			final var cell = header.type().readCell(buffer);
 			cells.add(cell);
@@ -143,7 +186,7 @@ public class SQLiteParser {
 		);
 	}
 
-	private static PageHeader parsePageHeader(ByteBuffer buffer) {
+	public static PageHeader parsePageHeader(ByteBuffer buffer) {
 		final var pageType = PageType.valueOf(buffer.get());
 		final var firstFreeBlockOffset = BufferUtils.getUnsignedShort(buffer);
 		final var numberOfCells = BufferUtils.getUnsignedShort(buffer);
@@ -164,6 +207,110 @@ public class SQLiteParser {
 			numberOfFragmentedFreeBytes,
 			rightMost
 		);
+	}
+
+	public static Batch parseBatch(Cell.WithPayload cell, TextEncoding textEncoding) {
+		final var id = cell instanceof Cell.WithRowId withRowId
+			? withRowId.rowId()
+			: -1;
+
+		final var buffer = ByteBuffer.wrap(cell.payload()).asReadOnlyBuffer();
+		final var rows = parseRows(buffer, textEncoding);
+
+		return new Batch(
+			id,
+			Collections.unmodifiableList(rows)
+		);
+	}
+
+	public static List<Row> parseRows(ByteBuffer buffer, TextEncoding textEncoding) {
+		final var rows = new ArrayList<Row>();
+
+		final var columnTypes = parseColumnTypes(buffer, textEncoding);
+		while (buffer.hasRemaining()) {
+			final var values = new ArrayList<>(columnTypes.size());
+
+			for (final var columnType : columnTypes) {
+				final var value = columnType.parseValue(buffer);
+				values.add(value);
+			}
+
+			rows.add(new Row(values));
+		}
+
+		return rows;
+	}
+
+	private static List<Type> parseColumnTypes(ByteBuffer buffer, TextEncoding textEncoding) {
+		final var columnTypes = new ArrayList<Type>();
+
+		final var headerSize = BufferUtils.getVariableLength(buffer);
+		while (buffer.position() < headerSize) {
+			final var typeId = BufferUtils.getVariableLength(buffer);
+
+			final var columnType = parseColumnType(typeId, textEncoding);
+			columnTypes.add(columnType);
+		}
+
+		return columnTypes;
+	}
+
+	private static Type parseColumnType(long typeId, TextEncoding textEncoding) {
+		if (typeId == 0) {
+			return NullType.INSTANCE;
+		}
+
+		if (typeId == 1) {
+			return IntegerType.SIZE_8;
+		}
+
+		if (typeId == 2) {
+			return IntegerType.SIZE_16;
+		}
+
+		if (typeId == 3) {
+			return IntegerType.SIZE_24;
+		}
+
+		if (typeId == 4) {
+			return IntegerType.SIZE_32;
+		}
+
+		if (typeId == 5) {
+			return IntegerType.SIZE_48;
+		}
+
+		if (typeId == 6) {
+			return IntegerType.SIZE_64;
+		}
+
+		if (typeId == 7) {
+			return DoubleType.INSTANCE;
+		}
+
+		if (typeId == 8) {
+			return BooleanType.FALSE;
+		}
+
+		if (typeId == 9) {
+			return BooleanType.TRUE;
+		}
+
+		if (typeId == 10) {
+			throw new UnsupportedOperationException("internal 10");
+		}
+
+		if (typeId == 11) {
+			throw new UnsupportedOperationException("internal 11");
+		}
+
+		if (typeId % 2 == 0) {
+			final var size = ((typeId - 12) / 2);
+			return new BlobType(size);
+		}
+
+		final var size = ((typeId - 13) / 2);
+		return new StringType(size, textEncoding);
 	}
 
 }
