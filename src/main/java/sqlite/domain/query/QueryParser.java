@@ -27,7 +27,7 @@ public class QueryParser {
 
 		final var columns = Arrays.asList(joinedColumns.split(",\\s*"));
 
-		if (joinedConditions.isBlank()) {
+		if (joinedConditions == null) {
 			return new ReadQuery(tableName, columns, null);
 		}
 
