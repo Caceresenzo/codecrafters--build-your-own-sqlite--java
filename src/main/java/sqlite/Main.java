@@ -76,7 +76,7 @@ public class Main {
 				.stream()
 				.map(String::valueOf)
 				.collect(Collectors.joining("|"));
-			
+
 			System.out.println(line);
 		}
 	}

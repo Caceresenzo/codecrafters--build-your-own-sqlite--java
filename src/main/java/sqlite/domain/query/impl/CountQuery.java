@@ -1,5 +1,6 @@
 package sqlite.domain.query.impl;
 
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
@@ -24,7 +25,7 @@ public record CountQuery(
 			++count;
 		}
 
-		final var row = new Row(-1, List.of(count));
+		final var row = new Row(-1, List.of(count), Collections.emptyList());
 		return List.of(row).iterator();
 	}
 

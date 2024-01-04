@@ -11,11 +11,14 @@ import sqlite.domain.Row;
 import sqlite.domain.TextEncoding;
 import sqlite.domain.query.LeafTableIterator;
 import sqlite.domain.query.Query;
+import sqlite.domain.query.predicate.ColumnIndexPredicate;
+import sqlite.domain.query.predicate.ColumnNamePredicate;
 import sqlite.domain.schema.Table;
 
 public record ReadQuery(
 	String tableName,
-	List<String> columnNames
+	List<String> columnNames,
+	ColumnNamePredicate namePredicate
 ) implements Query {
 
 	@Override
@@ -23,9 +26,14 @@ public record ReadQuery(
 		final var table = database.schema().table(tableName);
 		final var columnIndexes = getColumnIndexes(table);
 
+		final var predicate = namePredicate != null
+			? namePredicate.convert(table.columnNames())
+			: null;
+
 		return new RowIterator(
 			new LeafTableIterator(database::page, table.rootPage()),
 			database.header().textEncoding(),
+			predicate,
 			columnIndexes
 		);
 	}
@@ -60,23 +68,38 @@ public record ReadQuery(
 
 		private final LeafTableIterator delegate;
 		private final TextEncoding textEncoding;
+		private final ColumnIndexPredicate predicate;
 		private final List<Integer> columnIndexes;
+		private Row next;
 
 		@Override
 		public boolean hasNext() {
-			return delegate.hasNext();
+			next = peek();
+			return next != null;
 		}
 
 		@Override
 		public Row next() {
-			final var leaf = delegate.next();
-			var row = SQLiteParser.parseRow(leaf, textEncoding);
+			return next;
+		}
 
-			if (columnIndexes != null) {
-				row = row.reIndex(columnIndexes);
+		private Row peek() {
+			while (delegate.hasNext()) {
+				final var leaf = delegate.next();
+				var row = SQLiteParser.parseRow(leaf, textEncoding);
+
+				if (predicate != null && !predicate.test(row)) {
+					continue;
+				}
+
+				if (columnIndexes != null) {
+					row = row.reIndex(columnIndexes);
+				}
+
+				return row;
 			}
-			
-			return row;
+
+			return null;
 		}
 
 	}

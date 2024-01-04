@@ -5,6 +5,7 @@ import java.util.regex.Pattern;
 
 import sqlite.domain.query.impl.CountQuery;
 import sqlite.domain.query.impl.ReadQuery;
+import sqlite.domain.query.predicate.ColumnNamePredicate;
 
 public class QueryParser {
 
@@ -18,14 +19,27 @@ public class QueryParser {
 
 		final var joinedColumns = matcher.group(1);
 		final var tableName = matcher.group(2);
-		//		final var joinedConditions = matcher.group(3);
+		final var joinedConditions = matcher.group(3);
 
 		if ("COUNT(*)".equalsIgnoreCase(joinedColumns)) {
 			return new CountQuery(tableName);
 		}
 
 		final var columns = Arrays.asList(joinedColumns.split(",\\s*"));
-		return new ReadQuery(tableName, columns);
+
+		if (joinedConditions.isBlank()) {
+			return new ReadQuery(tableName, columns, null);
+		}
+
+		final var condition = joinedConditions.split("=", 2);
+		final var conditionColumn = condition[0].strip();
+		final var conditionValue = condition[1].strip().replace("'", "");
+
+		return new ReadQuery(
+			tableName,
+			columns,
+			new ColumnNamePredicate(conditionColumn, conditionValue)
+		);
 	}
 
 }

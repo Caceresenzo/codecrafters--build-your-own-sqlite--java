@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.IntStream;
 
 import sqlite.domain.Cell;
 import sqlite.domain.Database;
@@ -241,7 +242,7 @@ public class SQLiteParser {
 			throw new IllegalStateException("remaining data after row?");
 		}
 
-		return new Row(id, values);
+		return new Row(id, values, null);
 	}
 
 	private static List<Type> parseColumnTypes(ByteBuffer buffer, TextEncoding textEncoding) {
