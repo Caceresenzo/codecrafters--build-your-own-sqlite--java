@@ -17,7 +17,9 @@ import sqlite.domain.PageHeader;
 import sqlite.domain.PageType;
 import sqlite.domain.Row;
 import sqlite.domain.TextEncoding;
+import sqlite.domain.query.LeafTableIterator;
 import sqlite.domain.schema.Schema;
+import sqlite.domain.schema.SchemaSqlParser;
 import sqlite.domain.schema.Table;
 import sqlite.domain.type.BlobType;
 import sqlite.domain.type.BooleanType;
@@ -116,27 +118,32 @@ public class SQLiteParser {
 	}
 
 	public static Schema parseSchema(ByteBuffer buffer, DatabaseHeader databaseHeader) {
-		final var page = parsePage(buffer, databaseHeader.pageSize(), 1);
-
 		final var tables = new ArrayList<Table>();
 
 		final var textEncoding = databaseHeader.textEncoding();
-		final var rows = page.cells()
-			.stream()
-			.filter(Cell.WithPayload.class::isInstance)
-			.map((cell) -> parseRow((Cell.WithPayload) cell, textEncoding))
-			.toList();
+		final var iterator = new LeafTableIterator(
+			(pageNumber) -> parsePage(buffer, databaseHeader.pageSize(), pageNumber.intValue()),
+			1
+		);
 
-		for (final var row : rows) {
+		while (iterator.hasNext()) {
+			final var leaf = iterator.next();
+			final var row = parseRow(leaf, textEncoding);
+
 			final var type = row.get(0);
 
 			if ("table".equals(type)) {
 				final var name = row.getString(1);
 				final var rootPage = row.getLong(3);
+				final var sql = row.getString(4);
+
+				final var columnNames = SchemaSqlParser.parseColumnNames(sql);
 
 				tables.add(new Table(
 					name,
-					rootPage
+					rootPage,
+					sql,
+					columnNames
 				));
 			}
 		}
@@ -222,7 +229,12 @@ public class SQLiteParser {
 
 		for (final var columnType : columnTypes) {
 			final var value = columnType.parseValue(buffer);
-			values.add(value);
+
+			if (values.isEmpty() && value == null && id != -1) {
+				values.add(id);
+			} else {
+				values.add(value);
+			}
 		}
 
 		if (buffer.hasRemaining()) {

@@ -1,6 +1,10 @@
 package sqlite.domain.query;
 
+import java.util.Arrays;
 import java.util.regex.Pattern;
+
+import sqlite.domain.query.impl.CountQuery;
+import sqlite.domain.query.impl.ReadQuery;
 
 public class QueryParser {
 
@@ -20,8 +24,8 @@ public class QueryParser {
 			return new CountQuery(tableName);
 		}
 
-		//		final var columns = joinedColumns.split(",\\s*");
-		throw new UnsupportedOperationException();
+		final var columns = Arrays.asList(joinedColumns.split(",\\s*"));
+		return new ReadQuery(tableName, columns);
 	}
 
 }

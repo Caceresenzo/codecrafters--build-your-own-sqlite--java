@@ -75,7 +75,7 @@ public class Main {
 			final var line = row.values()
 				.stream()
 				.map(String::valueOf)
-				.collect(Collectors.joining(","));
+				.collect(Collectors.joining("|"));
 			
 			System.out.println(line);
 		}

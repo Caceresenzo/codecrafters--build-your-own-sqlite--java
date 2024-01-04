@@ -1,10 +1,12 @@
-package sqlite.domain.query;
+package sqlite.domain.query.impl;
 
 import java.util.Iterator;
 import java.util.List;
 
 import sqlite.domain.Database;
 import sqlite.domain.Row;
+import sqlite.domain.query.LeafTableIterator;
+import sqlite.domain.query.Query;
 
 public record CountQuery(
 	String tableName
@@ -16,7 +18,7 @@ public record CountQuery(
 
 		var count = 0l;
 
-		final var iterator = new LeafTableIterator(database, table.rootPage());
+		final var iterator = new LeafTableIterator(database::page, table.rootPage());
 		while (iterator.hasNext()) {
 			iterator.next();
 			++count;

@@ -3,18 +3,19 @@ package sqlite.domain.query;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.function.Function;
 
 import sqlite.domain.Cell;
-import sqlite.domain.Database;
+import sqlite.domain.Page;
 
 public class LeafTableIterator implements Iterator<Cell.LeafTable>, Iterable<Cell.LeafTable> {
 
-	private final Database database;
+	private final Function<Long, Page> pageReader;
 	private final List<Long> pageNumbers;
 	private final List<Cell.LeafTable> leafTables;
 
-	public LeafTableIterator(Database database, long firstPageNumber) {
-		this.database = database;
+	public LeafTableIterator(Function<Long, Page> pageReader, long firstPageNumber) {
+		this.pageReader = pageReader;
 		this.pageNumbers = new LinkedList<>();
 		this.leafTables = new LinkedList<>();
 
@@ -34,7 +35,7 @@ public class LeafTableIterator implements Iterator<Cell.LeafTable>, Iterable<Cel
 	public Cell.LeafTable peek() {
 		while (leafTables.isEmpty() && !pageNumbers.isEmpty()) {
 			final var number = pageNumbers.removeFirst();
-			final var page = database.page(number);
+			final var page = pageReader.apply(number);
 
 			for (final var cell : page.cells()) {
 				if (cell instanceof Cell.InteriorTable interiorTable) {

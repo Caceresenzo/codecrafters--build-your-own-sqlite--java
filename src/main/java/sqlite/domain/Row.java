@@ -1,5 +1,6 @@
 package sqlite.domain;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public record Row(
@@ -21,6 +22,16 @@ public record Row(
 	
 	public long getLong(int index) {
 		return ((Number) values.get(index)).longValue();
+	}
+
+	public Row reIndex(List<Integer> columnIndexes) {
+		final var newValues = new ArrayList<>();
+		
+		for (final var index : columnIndexes) {
+			newValues.add(values.get(index));
+		}
+		
+		return new Row(id, newValues);
 	}
 	
 }
