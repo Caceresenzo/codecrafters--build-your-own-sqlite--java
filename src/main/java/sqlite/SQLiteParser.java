@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import sqlite.domain.Batch;
 import sqlite.domain.Cell;
 import sqlite.domain.Database;
 import sqlite.domain.DatabaseHeader;
@@ -45,17 +44,16 @@ public class SQLiteParser {
 		final var header = parseDatabaseHeader(buffer.slice(0, HEADER_SIZE));
 		final var schema = parseSchema(buffer, header);
 
-		return new Database(
-			header,
-			schema,
-			buffer
-		);
+		return new Database(header, schema, buffer);
 	}
 
-	public static ByteBuffer slicePageBuffer(ByteBuffer buffer, int pageSize, int pageNumber) {
-		final var offset = (pageNumber - 1) * pageSize;
+	public static ByteBuffer slicePageBuffer(ByteBuffer buffer, int pageSize, int pageNumber, boolean isFirst) {
+		var offset = (pageNumber - 1) * pageSize;
+		if (isFirst) {
+			offset += HEADER_SIZE;
+		}
 
-		return buffer.slice(HEADER_SIZE + offset, pageSize);
+		return buffer.slice(offset, pageSize);
 	}
 
 	public static DatabaseHeader parseDatabaseHeader(ByteBuffer buffer) {
@@ -123,25 +121,23 @@ public class SQLiteParser {
 		final var tables = new ArrayList<Table>();
 
 		final var textEncoding = databaseHeader.textEncoding();
-		final var batches = page.cells()
+		final var rows = page.cells()
 			.stream()
 			.filter(Cell.WithPayload.class::isInstance)
-			.map((cell) -> parseBatch((Cell.WithPayload) cell, textEncoding))
+			.map((cell) -> parseRow((Cell.WithPayload) cell, textEncoding))
 			.toList();
 
-		for (final var batch : batches) {
-			for (final var row : batch.rows()) {
-				final var type = row.get(0);
+		for (final var row : rows) {
+			final var type = row.get(0);
 
-				if ("table".equals(type)) {
-					final var name = row.getString(1);
-					final var rootPage = row.getLong(3);
+			if ("table".equals(type)) {
+				final var name = row.getString(1);
+				final var rootPage = row.getLong(3);
 
-					tables.add(new Table(
-						name,
-						rootPage
-					));
-				}
+				tables.add(new Table(
+					name,
+					rootPage
+				));
 			}
 		}
 
@@ -155,14 +151,16 @@ public class SQLiteParser {
 			throw new IllegalStateException("number < 1: " + number);
 		}
 
-		final var pageBuffer = slicePageBuffer(buffer, pageSize, number);
+		final var isFirst = number == 1;
+		final var pageBuffer = slicePageBuffer(buffer, pageSize, number, isFirst);
 
 		return parsePage(
-			pageBuffer
+			pageBuffer,
+			isFirst
 		);
 	}
 
-	public static Page parsePage(ByteBuffer buffer) {
+	public static Page parsePage(ByteBuffer buffer, boolean isFirst) {
 		final var header = parsePageHeader(buffer);
 		final var numberOfCells = header.numberOfCells();
 
@@ -172,9 +170,12 @@ public class SQLiteParser {
 		}
 
 		final var cells = new ArrayList<Cell>();
-		for (final var offset : cellOffsets) {
-			/* TODO only for first page? */
-			buffer.position(offset - HEADER_SIZE);
+		for (var offset : cellOffsets) {
+			if (isFirst) {
+				offset -= HEADER_SIZE;
+			}
+
+			buffer.position(offset);
 
 			final var cell = header.type().readCell(buffer);
 			cells.add(cell);
@@ -209,36 +210,26 @@ public class SQLiteParser {
 		);
 	}
 
-	public static Batch parseBatch(Cell.WithPayload cell, TextEncoding textEncoding) {
+	public static Row parseRow(Cell.WithPayload cell, TextEncoding textEncoding) {
 		final var id = cell instanceof Cell.WithRowId withRowId
 			? withRowId.rowId()
 			: -1;
 
 		final var buffer = ByteBuffer.wrap(cell.payload()).asReadOnlyBuffer();
-		final var rows = parseRows(buffer, textEncoding);
-
-		return new Batch(
-			id,
-			Collections.unmodifiableList(rows)
-		);
-	}
-
-	public static List<Row> parseRows(ByteBuffer buffer, TextEncoding textEncoding) {
-		final var rows = new ArrayList<Row>();
 
 		final var columnTypes = parseColumnTypes(buffer, textEncoding);
-		while (buffer.hasRemaining()) {
-			final var values = new ArrayList<>(columnTypes.size());
+		final var values = new ArrayList<>(columnTypes.size());
 
-			for (final var columnType : columnTypes) {
-				final var value = columnType.parseValue(buffer);
-				values.add(value);
-			}
-
-			rows.add(new Row(values));
+		for (final var columnType : columnTypes) {
+			final var value = columnType.parseValue(buffer);
+			values.add(value);
 		}
 
-		return rows;
+		if (buffer.hasRemaining()) {
+			throw new IllegalStateException("remaining data after row?");
+		}
+
+		return new Row(id, values);
 	}
 
 	private static List<Type> parseColumnTypes(ByteBuffer buffer, TextEncoding textEncoding) {

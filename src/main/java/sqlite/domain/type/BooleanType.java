@@ -21,5 +21,10 @@ public enum BooleanType implements Type {
 	public Object parseValue(ByteBuffer buffer) {
 		return value;
 	}
+	
+	@Override
+	public String toString() {
+		return "BooleanType.".formatted(name());
+	}
 
 }

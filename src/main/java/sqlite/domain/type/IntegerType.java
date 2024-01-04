@@ -65,4 +65,9 @@ public enum IntegerType implements Type {
 	@Override
 	public abstract Object parseValue(ByteBuffer buffer);
 
+	@Override
+	public String toString() {
+		return "IntegerType.%s".formatted(name());
+	}
+
 }

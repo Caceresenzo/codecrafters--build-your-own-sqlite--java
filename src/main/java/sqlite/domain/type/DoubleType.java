@@ -15,5 +15,10 @@ public enum DoubleType implements Type {
 	public Object parseValue(ByteBuffer buffer) {
 		return buffer.getDouble();
 	}
+	
+	@Override
+	public String toString() {
+		return "DoubleType";
+	}
 
 }

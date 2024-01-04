@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.stream.Collectors;
 
 import sqlite.domain.Database;
+import sqlite.domain.query.QueryParser;
 import sqlite.domain.schema.Table;
 
 public class Main {
@@ -22,7 +23,7 @@ public class Main {
 		switch (command) {
 			case ".dbinfo" -> dotDbinfo(database);
 			case ".tables" -> dotTables(database);
-			default -> System.out.println("Missing or invalid command passed: " + command);
+			default -> query(database, args[1]);
 		}
 	}
 
@@ -60,8 +61,24 @@ public class Main {
 			.stream()
 			.map(Table::name)
 			.collect(Collectors.joining(" "));
-		
+
 		System.out.println(names);
+	}
+
+	public static void query(Database database, String querySql) {
+		final var query = QueryParser.parse(querySql);
+		final var iterator = query.execute(database);
+
+		while (iterator.hasNext()) {
+			final var row = iterator.next();
+
+			final var line = row.values()
+				.stream()
+				.map(String::valueOf)
+				.collect(Collectors.joining(","));
+			
+			System.out.println(line);
+		}
 	}
 
 }

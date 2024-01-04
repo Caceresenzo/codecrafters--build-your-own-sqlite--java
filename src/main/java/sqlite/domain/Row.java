@@ -3,6 +3,7 @@ package sqlite.domain;
 import java.util.List;
 
 public record Row(
+	long id,
 	List<Object> values
 ) {
 	
