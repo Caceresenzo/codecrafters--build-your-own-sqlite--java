@@ -29,9 +29,13 @@ public enum IntegerType implements Type {
 	},
 	SIZE_24(3) {
 
+		private final byte[] bytes = new byte[3];
+
 		@Override
 		public Object parseValue(ByteBuffer buffer) {
-			throw new UnsupportedOperationException("SIZE_24");
+			buffer.get(bytes);
+
+			return (Byte.toUnsignedInt(bytes[0]) << 16) | (Byte.toUnsignedInt(bytes[1]) << 8) | (Byte.toUnsignedInt(bytes[2]));
 		}
 
 	},

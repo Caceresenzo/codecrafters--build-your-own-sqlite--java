@@ -12,12 +12,14 @@ import sqlite.domain.Cell;
 import sqlite.domain.Database;
 import sqlite.domain.DatabaseHeader;
 import sqlite.domain.FileFormatVersion;
+import sqlite.domain.IndexRow;
 import sqlite.domain.Page;
 import sqlite.domain.PageHeader;
 import sqlite.domain.PageType;
-import sqlite.domain.Row;
+import sqlite.domain.TableRow;
 import sqlite.domain.TextEncoding;
 import sqlite.domain.query.LeafTableIterator;
+import sqlite.domain.schema.Index;
 import sqlite.domain.schema.Schema;
 import sqlite.domain.schema.SchemaSqlParser;
 import sqlite.domain.schema.Table;
@@ -119,6 +121,7 @@ public class SQLiteParser {
 
 	public static Schema parseSchema(ByteBuffer buffer, DatabaseHeader databaseHeader) {
 		final var tables = new ArrayList<Table>();
+		final var indexes = new ArrayList<Index>();
 
 		final var textEncoding = databaseHeader.textEncoding();
 		final var iterator = new LeafTableIterator(
@@ -128,7 +131,7 @@ public class SQLiteParser {
 
 		while (iterator.hasNext()) {
 			final var leaf = iterator.next();
-			final var row = parseRow(leaf, textEncoding);
+			final var row = parseTableRow(leaf, textEncoding);
 
 			final var type = row.get(0);
 
@@ -145,11 +148,27 @@ public class SQLiteParser {
 					sql,
 					columnNames
 				));
+			} else if ("index".equals(type)) {
+				final var name = row.getString(1);
+				final var tableName = row.getString(2);
+				final var rootPage = row.getLong(3);
+				final var sql = row.getString(4);
+
+				final var columnName = SchemaSqlParser.parseIndexColumnName(sql);
+
+				indexes.add(new Index(
+					name,
+					tableName,
+					rootPage,
+					sql,
+					columnName
+				));
 			}
 		}
 
 		return new Schema(
-			tables
+			tables,
+			indexes
 		);
 	}
 
@@ -217,7 +236,7 @@ public class SQLiteParser {
 		);
 	}
 
-	public static Row parseRow(Cell.WithPayload cell, TextEncoding textEncoding) {
+	public static TableRow parseTableRow(Cell.WithPayload cell, TextEncoding textEncoding) {
 		final var id = cell instanceof Cell.WithRowId withRowId
 			? withRowId.rowId()
 			: -1;
@@ -241,7 +260,24 @@ public class SQLiteParser {
 			throw new IllegalStateException("remaining data after row?");
 		}
 
-		return new Row(id, values, null);
+		return new TableRow(id, values, null);
+	}
+
+	public static IndexRow parseIndexRow(Cell.LeafIndex cell, TextEncoding textEncoding) {
+		final var buffer = ByteBuffer.wrap(cell.payload()).asReadOnlyBuffer();
+		final var columnTypes = parseColumnTypes(buffer, textEncoding);
+		final var values = new ArrayList<>(columnTypes.size());
+
+		for (final var columnType : columnTypes) {
+			final var value = columnType.parseValue(buffer);
+			values.add(value);
+		}
+
+		if (buffer.hasRemaining()) {
+			throw new IllegalStateException("remaining data after row?");
+		}
+
+		return new IndexRow(values);
 	}
 
 	private static List<Type> parseColumnTypes(ByteBuffer buffer, TextEncoding textEncoding) {

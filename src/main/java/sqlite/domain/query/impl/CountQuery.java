@@ -5,7 +5,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import sqlite.domain.Database;
-import sqlite.domain.Row;
+import sqlite.domain.TableRow;
 import sqlite.domain.query.LeafTableIterator;
 import sqlite.domain.query.Query;
 
@@ -14,7 +14,7 @@ public record CountQuery(
 ) implements Query {
 
 	@Override
-	public Iterator<Row> execute(Database database) {
+	public Iterator<TableRow> execute(Database database) {
 		final var table = database.schema().table(tableName);
 
 		var count = 0l;
@@ -25,7 +25,7 @@ public record CountQuery(
 			++count;
 		}
 
-		final var row = new Row(-1, List.of(count), Collections.emptyList());
+		final var row = new TableRow(-1, List.of(count), Collections.emptyList());
 		return List.of(row).iterator();
 	}
 
