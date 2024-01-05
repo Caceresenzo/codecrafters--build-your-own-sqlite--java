@@ -2,12 +2,13 @@ package sqlite;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
+import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import lombok.SneakyThrows;
 import sqlite.domain.Cell;
 import sqlite.domain.Database;
 import sqlite.domain.DatabaseHeader;
@@ -38,17 +39,27 @@ public class SQLiteParser {
 
 	public static Database parse(Path path) throws IOException {
 		return parse(
-			ByteBuffer
-				.wrap(Files.readAllBytes(path))
-				.asReadOnlyBuffer()
+			FileChannel.open(path)
 		);
 	}
 
-	public static Database parse(ByteBuffer buffer) {
-		final var header = parseDatabaseHeader(buffer.slice(0, HEADER_SIZE));
-		final var schema = parseSchema(buffer, header);
+	public static Database parse(FileChannel channel) {
+		final var header = parseDatabaseHeader(channel);
+		final var schema = parseSchema(channel, header);
 
-		return new Database(header, schema, buffer);
+		return new Database(header, schema, channel);
+	}
+
+	@SneakyThrows
+	public static ByteBuffer slicePageBuffer(FileChannel channel, int pageSize, int pageNumber, boolean isFirst) {
+		var offset = (pageNumber - 1) * pageSize;
+		if (isFirst) {
+			offset += HEADER_SIZE;
+		}
+
+		final var buffer = ByteBuffer.allocate(pageSize);
+		channel.read(buffer, offset);
+		return buffer.rewind();
 	}
 
 	public static ByteBuffer slicePageBuffer(ByteBuffer buffer, int pageSize, int pageNumber, boolean isFirst) {
@@ -60,7 +71,12 @@ public class SQLiteParser {
 		return buffer.slice(offset, pageSize);
 	}
 
-	public static DatabaseHeader parseDatabaseHeader(ByteBuffer buffer) {
+	@SneakyThrows
+	public static DatabaseHeader parseDatabaseHeader(FileChannel channel) {
+		final var buffer = ByteBuffer.allocate(HEADER_SIZE);
+		channel.read(buffer);
+		buffer.rewind();
+
 		final var headerStringBytes = new byte[16];
 		buffer.get(headerStringBytes);
 
@@ -119,13 +135,13 @@ public class SQLiteParser {
 		);
 	}
 
-	public static Schema parseSchema(ByteBuffer buffer, DatabaseHeader databaseHeader) {
+	public static Schema parseSchema(FileChannel channel, DatabaseHeader databaseHeader) {
 		final var tables = new ArrayList<Table>();
 		final var indexes = new ArrayList<Index>();
 
 		final var textEncoding = databaseHeader.textEncoding();
 		final var iterator = new LeafTableIterator(
-			(pageNumber) -> parsePage(buffer, databaseHeader.pageSize(), pageNumber.intValue()),
+			(pageNumber) -> parsePage(channel, databaseHeader.pageSize(), pageNumber.intValue()),
 			1
 		);
 
@@ -169,6 +185,20 @@ public class SQLiteParser {
 		return new Schema(
 			tables,
 			indexes
+		);
+	}
+
+	public static Page parsePage(FileChannel channel, int pageSize, int number) {
+		if (number < 1) {
+			throw new IllegalStateException("number < 1: " + number);
+		}
+
+		final var isFirst = number == 1;
+		final var pageBuffer = slicePageBuffer(channel, pageSize, number, isFirst);
+
+		return parsePage(
+			pageBuffer,
+			isFirst
 		);
 	}
 

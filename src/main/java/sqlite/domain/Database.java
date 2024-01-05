@@ -1,6 +1,6 @@
 package sqlite.domain;
 
-import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 
 import sqlite.SQLiteParser;
 import sqlite.domain.schema.Schema;
@@ -8,11 +8,11 @@ import sqlite.domain.schema.Schema;
 public record Database(
 	DatabaseHeader header,
 	Schema schema,
-	ByteBuffer buffer
+	FileChannel channel
 ) {
 
 	public Page page(long number) {
-		return SQLiteParser.parsePage(buffer, header.pageSize(), Math.toIntExact(number));
+		return SQLiteParser.parsePage(channel, header.pageSize(), Math.toIntExact(number));
 	}
 
 }
