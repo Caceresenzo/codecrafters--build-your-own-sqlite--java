@@ -44,19 +44,14 @@ public class LeafIndexIterator implements Iterator<Long>, Iterable<Long> {
 			final var number = pageNumbers.removeFirst();
 			final var page = pageReader.apply(number);
 
-			var testPassed = false;
 			for (final var cell : page.cells()) {
 				if (cell instanceof Cell.InteriorIndex interiorIndex) {
 					pageNumbers.addLast(interiorIndex.leftChild());
 				} else if (cell instanceof Cell.LeafIndex leafIndex) {
 					final var row = SQLiteParser.parseIndexRow(leafIndex, textEncoding);
 
-					if (!testPassed) {
-						if (!predicate.test(row)) {
-							break;
-						}
-
-						testPassed = true;
+					if (!predicate.test(row)) {
+						continue;
 					}
 
 					rowIds.add(row.id());
